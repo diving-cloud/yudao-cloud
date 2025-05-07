@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.iocoder.yudao.module.leaf.dal.mysql.redpacket.RedPacketShardMapper">
+
+    <!-- 抢夺红包分片 -->
+    <update id="grabShard">
+        UPDATE leaf_red_packet_shard
+        SET status = 1, <!-- 1表示已抢状态 -->
+            grab_user_id = #{userId},
+            grab_time = #{grabTime},
+            update_time = NOW()
+        WHERE red_packet_id = #{redPacketId}
+          AND shard_id = #{shardId}
+          AND status = 0 <!-- 0表示未抢状态 -->
+    </update>
+
+    <!-- 根据红包ID和分片ID查询分片 -->
+    <select id="selectByPacketIdAndShardId" resultType="cn.iocoder.yudao.module.leaf.dal.dataobject.redpacket.RedPacketShard">
+        SELECT *
+        FROM leaf_red_packet_shard
+        WHERE red_packet_id = #{redPacketId}
+          AND shard_id = #{shardId}
+    </select>
+
+    <!-- 批量插入红包分片 -->
+    <insert id="insertBatch">
+        INSERT INTO leaf_red_packet_shard (
+            red_packet_id, shard_id, amount, status,
+            creator, create_time, updater, update_time
+        ) VALUES
+        <foreach collection="shards" item="shard" separator=",">
+            (
+            #{shard.redPacketId}, #{shard.shardId}, #{shard.amount}, #{shard.status},
+            #{shard.creator}, #{shard.createTime}, #{shard.updater}, #{shard.updateTime}
+            )
+        </foreach>
+    </insert>
+
+</mapper>

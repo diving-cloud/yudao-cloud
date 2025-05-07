@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.iocoder.yudao.module.leaf.dal.mysql.redpacket.RedPacketRecordMapper">
+
+    <!-- 根据红包ID查询记录列表 -->
+    <select id="selectListByPacketId" resultType="cn.iocoder.yudao.module.leaf.dal.dataobject.redpacket.RedPacketRecord">
+        SELECT *
+        FROM leaf_red_packet_record
+        WHERE red_packet_id = #{redPacketId}
+        ORDER BY create_time ASC
+    </select>
+
+    <!-- 根据红包ID和用户ID查询记录 -->
+    <select id="selectByPacketIdAndUserId" resultType="cn.iocoder.yudao.module.leaf.dal.dataobject.redpacket.RedPacketRecord">
+        SELECT *
+        FROM leaf_red_packet_record
+        WHERE red_packet_id = #{redPacketId}
+          AND user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <!-- 更新结算状态 -->
+    <update id="updateStatus">
+        UPDATE leaf_red_packet_record
+        SET status = #{newStatus},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status = #{expectedStatus}
+    </update>
+
+</mapper>

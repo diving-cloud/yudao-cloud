@@ -91,6 +91,21 @@
             <artifactId>yudao-spring-boot-starter-job</artifactId>
         </dependency>
 
+
+        <!-- 消息队列相关 -->
+        <dependency>
+            <groupId>cn.iocoder.cloud</groupId>
+            <artifactId>yudao-spring-boot-starter-mq</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-spring-boot-starter</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+
         <!-- 工具类相关 -->
         <dependency>
             <groupId>cn.iocoder.cloud</groupId>
@@ -107,6 +122,10 @@
         <dependency>
             <groupId>cn.iocoder.cloud</groupId>
             <artifactId>yudao-spring-boot-starter-test</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>cn.iocoder.cloud</groupId>
+            <artifactId>yudao-spring-boot-starter-websocket</artifactId>
         </dependency>
     </dependencies>
 

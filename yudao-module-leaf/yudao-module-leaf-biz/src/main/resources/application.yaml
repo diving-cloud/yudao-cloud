@@ -103,5 +103,9 @@ yudao:
   tenant: # 多租户相关配置项
     enable: true
     ignore-urls:
+  websocket:
+    sender-rocketmq:
+      topic: your-websocket-topic
+      consumer-group: your-consumer-group
 
 debug: false
