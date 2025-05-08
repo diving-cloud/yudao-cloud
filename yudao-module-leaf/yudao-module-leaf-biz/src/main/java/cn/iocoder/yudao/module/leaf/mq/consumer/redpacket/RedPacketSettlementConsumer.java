@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.leaf.mq.consumer.redpacket;
 
 import cn.iocoder.yudao.module.leaf.dal.dataobject.redpacket.RedPacketRecord;
 import cn.iocoder.yudao.module.leaf.dal.mysql.redpacket.RedPacketRecordMapper;
+import cn.iocoder.yudao.module.leaf.enums.redpacket.RedPacketRecordStatusEnum;
 import cn.iocoder.yudao.module.leaf.mq.message.RedPacketSettlementMessage;
 import cn.iocoder.yudao.module.leaf.service.payment.PaymentService;
 import jakarta.annotation.Resource;
@@ -39,7 +40,7 @@ public class RedPacketSettlementConsumer implements RocketMQListener<RedPacketSe
                 return;
             }
             
-            if (!RedPacketRecordStatus.PENDING.getCode().equals(record.getStatus())) {
+            if (!RedPacketRecordStatusEnum.PENDING_SETTLEMENT.getCode().equals(record.getStatus())) {
                 log.info("[onMessage][红包记录({})状态为({})，跳过结算]", 
                         recordId, record.getStatus());
                 return;
@@ -51,8 +52,8 @@ public class RedPacketSettlementConsumer implements RocketMQListener<RedPacketSe
             // 更新结算状态
             int updated = redPacketRecordMapper.updateStatus(
                     recordId, 
-                    success ? RedPacketRecordStatus.SETTLED.getCode() : RedPacketRecordStatus.FAILED.getCode(),
-                    RedPacketRecordStatus.PENDING.getCode());
+                    success ? RedPacketRecordStatusEnum.SETTLED.getCode() : RedPacketRecordStatusEnum.SETTLEMENT_FAILED.getCode(),
+                    RedPacketRecordStatusEnum.PENDING_SETTLEMENT.getCode());
             
             if (updated > 0) {
                 log.info("[onMessage][红包记录({})结算完成，状态：{}]", 

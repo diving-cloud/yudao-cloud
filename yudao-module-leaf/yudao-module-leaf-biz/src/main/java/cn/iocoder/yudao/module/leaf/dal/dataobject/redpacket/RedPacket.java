@@ -49,9 +49,19 @@ public class RedPacket extends BaseDO {
     /**
      * 红包状态
      *
-     * 枚举 {@link cn.iocoder.yudao.module.leaf.enums.redpacket.RedPacketStatus}
+     * 枚举 {@link cn.iocoder.yudao.module.leaf.enums.redpacket.RedPacketStatusEnum}
      */
     private Integer status;
+
+    /**
+     * 粉丝数目标
+     */
+    private Long followersTarget;
+
+    /**
+     * 当前粉丝数
+     */
+    private Long currentFollowers;
     
     /**
      * 开始时间

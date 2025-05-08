@@ -21,13 +21,15 @@ public class RedPacketCreateRequest {
     private Integer totalCount;
 
     // Optional: Target number of followers to trigger something
-    private Integer followersTarget;
+    private Long followersTarget;
 
     @NotNull(message = "Start time cannot be null")
     private LocalDateTime startTime;
 
     @NotNull(message = "End time cannot be null")
     private LocalDateTime endTime;
+
+
 
     // Removed shards from request, they should be generated internally
     // private List<RedPacketShardDTO> shards;
