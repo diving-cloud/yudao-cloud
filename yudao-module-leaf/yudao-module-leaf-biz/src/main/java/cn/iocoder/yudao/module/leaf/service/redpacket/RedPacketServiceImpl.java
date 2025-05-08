@@ -267,7 +267,7 @@ public class RedPacketServiceImpl implements RedPacketService {
 
         if (shardWithCounts != null && !shardWithCounts.isEmpty()) {
             ZSetOperations.TypedTuple<Object> tuple = shardWithCounts.iterator().next();
-            Integer shardId = Integer.valueOf(tuple.getValue().toString());
+            Integer shardId = Integer.valueOf(Objects.requireNonNull(tuple.getValue()).toString());
             Double remainingCount = tuple.getScore();
             // 如果该分片还有剩余，则分配该分片
             if (remainingCount > 0) {
