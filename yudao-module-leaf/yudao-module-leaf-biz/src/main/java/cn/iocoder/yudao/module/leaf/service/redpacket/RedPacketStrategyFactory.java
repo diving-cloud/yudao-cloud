@@ -19,6 +19,7 @@ public class RedPacketStrategyFactory {
 
     @Autowired
     private FixedAmountStrategy fixedAmountStrategy;
+
     @Autowired
     private RandomAmountStrategy randomAmountStrategy;
 

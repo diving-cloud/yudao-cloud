@@ -9,8 +9,8 @@ public class RedPacketTokenDTO {
     private Long redPacketId;
     private Long userId;
     private Long timestamp;
-    private BigDecimal minAmount; // Example field
-    private BigDecimal maxAmount; // Example field
+    private BigDecimal minAmount;
+    private BigDecimal maxAmount;
     private Boolean canGrab;
     private String sign;
 }
