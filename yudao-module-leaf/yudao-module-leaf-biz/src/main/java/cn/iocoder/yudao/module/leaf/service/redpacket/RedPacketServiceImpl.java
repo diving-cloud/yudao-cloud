@@ -74,13 +74,13 @@ public class RedPacketServiceImpl implements RedPacketService {
         redPacket.setStatus(RedPacketStatusEnum.NOT_STARTED.getCode());
         redPacket.setStartTime(request.getStartTime());
         redPacket.setEndTime(request.getEndTime());
-        redPacket.setCreateTime(LocalDateTime.now());
-        redPacket.setUpdateTime(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        redPacket.setCreateTime(now);
+        redPacket.setUpdateTime(now);
         // 插入红包主体
         redPacketMapper.insert(redPacket);
-
-        // 插入成功后通过数据库自增ID获取完整对象
-        Long newRedPacketId = redPacket.getId(); // 假设使用自增主键，插入后会设置id
+        // 插入成功后通过数据库自增ID获取完整对象，假设使用自增主键，插入后会设置id
+        Long newRedPacketId = redPacket.getId();
         // 保存红包分片
         for (RedPacketShardDTO shardDTO : redPacketShardDTOS) {
             RedPacketShard shard = new RedPacketShard();
@@ -88,10 +88,9 @@ public class RedPacketServiceImpl implements RedPacketService {
             shard.setShardId(shardDTO.getShardId());
             shard.setAmount(shardDTO.getAmount());
             shard.setStatus(RedPacketShardStatusEnum.UNRECEIVED.getCode());
-            shard.setCreateTime(LocalDateTime.now());
-            shard.setUpdateTime(LocalDateTime.now());
+            shard.setCreateTime(now);
+            shard.setUpdateTime(now);
             redPacketShardMapper.insert(shard);
-
             // 将红包分片数据存入Redis
             String redisKey = "red_packet:" + newRedPacketId + ":shard:" + shard.getShardId();
             redisTemplate.opsForValue().set(redisKey, shard.getAmount().toString(), 24, TimeUnit.HOURS);
