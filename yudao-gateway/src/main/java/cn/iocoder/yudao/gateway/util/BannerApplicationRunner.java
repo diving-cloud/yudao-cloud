@@ -39,8 +39,14 @@ public class BannerApplicationRunner implements ApplicationRunner {
             System.out.println("[商城系统 yudao-module-mall 教程][参考 https://cloud.iocoder.cn/mall/build/ 开启]");
             // ERP 系统
             System.out.println("[ERP 系统 yudao-module-erp - 教程][参考 https://cloud.iocoder.cn/erp/build/ 开启]");
+            // WMS 仓库管理系统
+            System.out.println("[WMS 仓库管理系统 yudao-module-wms - 教程][参考 https://cloud.iocoder.cn/wms/build/ 开启]");
             // CRM 系统
             System.out.println("[CRM 系统 yudao-module-crm - 教程][参考 https://cloud.iocoder.cn/crm/build/ 开启]");
+            // MES 系统
+            System.out.println("[MES 系统 yudao-module-mes - 教程][参考 https://cloud.iocoder.cn/mes/build/ 开启]");
+            // IM 即时通讯
+            System.out.println("[IM 即时通讯 yudao-module-im - 教程][参考 https://cloud.iocoder.cn/im/build/ 开启]");
             // 微信公众号
             System.out.println("[微信公众号 yudao-module-mp 教程][参考 https://cloud.iocoder.cn/mp/build/ 开启]");
             // 支付平台
@@ -48,7 +54,7 @@ public class BannerApplicationRunner implements ApplicationRunner {
             // AI 大模型
             System.out.println("[AI 大模型 yudao-module-ai - 教程][参考 https://cloud.iocoder.cn/ai/build/ 开启]");
             // IOT 物联网
-            System.out.println("[IOT 物联网 yudao-module-iot - 教程][参考 https://doc.iocoder.cn/iot/build/ 开启]");
+            System.out.println("[IoT 物联网 yudao-module-iot - 教程][参考 https://doc.iocoder.cn/iot/build/ 开启]");
         });
     }
 

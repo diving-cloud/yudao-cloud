@@ -23,36 +23,41 @@ import java.util.Objects;
 @AllArgsConstructor
 public class RedisPendingMessageResendJob {
 
-    private static final String LOCK_KEY = "redis:pending:msg:lock";
+    public static final String DEFAULT_RESEND_LOCK_KEY = "redis:stream:pending-message-resend:lock";
+
+    public static final String IOT_RESEND_LOCK_KEY = "redis:stream:pending-message-resend:lock:iot";
 
     /**
      * 消息超时时间，默认 5 分钟
      *
      * 1. 超时的消息才会被重新投递
-     * 2. 由于定时任务 1 分钟一次，消息超时后不会被立即重投，极端情况下消息5分钟过期后，再等 1 分钟才会被扫瞄到
+     * 2. 由于定时任务 1 分钟一次，消息超时后不会被立即重投，极端情况下消息 5 分钟过期后，再等 1 分钟才会被扫瞄到
      */
     private static final int EXPIRE_TIME = 5 * 60;
 
     private final List<AbstractRedisStreamMessageListener<?>> listeners;
     private final RedisMQTemplate redisTemplate;
-    private final String groupName;
     private final RedissonClient redissonClient;
+    private final String resendLockKey;
 
     /**
-     * 一分钟执行一次,这里选择每分钟的35秒执行，是为了避免整点任务过多的问题
+     * 一分钟执行一次,这里选择每分钟的 35 秒执行，是为了避免整点任务过多的问题
      */
     @Scheduled(cron = "35 * * * * ?")
     public void messageResend() {
-        RLock lock = redissonClient.getLock(LOCK_KEY);
-        // 尝试加锁
+        RLock lock = redissonClient.getLock(resendLockKey);
         if (lock.tryLock()) {
             try {
                 execute();
             } catch (Exception ex) {
-                log.error("[messageResend][执行异常]", ex);
+                log.error("[messageResend][执行异常][lockKey={}]", resendLockKey, ex);
             } finally {
-                lock.unlock();
+                if (lock.isHeldByCurrentThread()) {
+                    lock.unlock();
+                }
             }
+        } else {
+            log.debug("[messageResend][未获取到锁，跳过本轮][lockKey={}]", resendLockKey);
         }
     }
 
@@ -64,13 +69,13 @@ public class RedisPendingMessageResendJob {
     private void execute() {
         StreamOperations<String, Object, Object> ops = redisTemplate.getRedisTemplate().opsForStream();
         listeners.forEach(listener -> {
-            PendingMessagesSummary pendingMessagesSummary = Objects.requireNonNull(ops.pending(listener.getStreamKey(), groupName));
+            PendingMessagesSummary pendingMessagesSummary = Objects.requireNonNull(ops.pending(listener.getStreamKey(), listener.getGroup()));
             // 每个消费者的 pending 队列消息数量
             Map<String, Long> pendingMessagesPerConsumer = pendingMessagesSummary.getPendingMessagesPerConsumer();
             pendingMessagesPerConsumer.forEach((consumerName, pendingMessageCount) -> {
                 log.info("[processPendingMessage][消费者({}) 消息数量({})]", consumerName, pendingMessageCount);
                 // 每个消费者的 pending消息的详情信息
-                PendingMessages pendingMessages = ops.pending(listener.getStreamKey(), Consumer.from(groupName, consumerName), Range.unbounded(), pendingMessageCount);
+                PendingMessages pendingMessages = ops.pending(listener.getStreamKey(), Consumer.from(listener.getGroup(), consumerName), Range.unbounded(), pendingMessageCount);
                 if (pendingMessages.isEmpty()) {
                     return;
                 }
@@ -91,7 +96,7 @@ public class RedisPendingMessageResendJob {
                             .ofObject(records.get(0).getValue()) // 设置内容
                             .withStreamKey(listener.getStreamKey()));
                     // ack 消息消费完成
-                    redisTemplate.getRedisTemplate().opsForStream().acknowledge(groupName, records.get(0));
+                    redisTemplate.getRedisTemplate().opsForStream().acknowledge(listener.getGroup(), records.get(0));
                     log.info("[processPendingMessage][消息({})重新投递成功]", records.get(0).getId());
                 });
             });

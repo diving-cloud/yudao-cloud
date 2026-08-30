@@ -30,6 +30,7 @@ import org.springframework.web.util.pattern.PathPattern;
 
 import javax.annotation.Resource;
 import javax.annotation.security.PermitAll;
+import javax.servlet.DispatcherType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -142,7 +143,9 @@ public class YudaoWebSecurityConfigurerAdapter {
                 // ②：每个项目的自定义规则
                 .authorizeHttpRequests(c -> authorizeRequestsCustomizers.forEach(customizer -> customizer.customize(c)))
                 // ③：兜底规则，必须认证
-                .authorizeHttpRequests(c -> c.anyRequest().authenticated());
+                .authorizeHttpRequests(c -> c
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll() // WebFlux 异步请求，无需认证，目的：SSE 场景
+                        .anyRequest().authenticated());
 
         // 添加 Token Filter
         httpSecurity.addFilterBefore(authenticationTokenFilter, UsernamePasswordAuthenticationFilter.class);
@@ -162,7 +165,8 @@ public class YudaoWebSecurityConfigurerAdapter {
         // 获得有 @PermitAll 注解的接口
         for (Map.Entry<RequestMappingInfo, HandlerMethod> entry : handlerMethodMap.entrySet()) {
             HandlerMethod handlerMethod = entry.getValue();
-            if (!handlerMethod.hasMethodAnnotation(PermitAll.class)) {
+            if (!handlerMethod.hasMethodAnnotation(PermitAll.class) // 方法级
+                    && !handlerMethod.getBeanType().isAnnotationPresent(PermitAll.class)) { // 接口级
                 continue;
             }
             Set<String> urls = new HashSet<>();

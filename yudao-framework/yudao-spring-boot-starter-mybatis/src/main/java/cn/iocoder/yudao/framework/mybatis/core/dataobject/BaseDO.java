@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fhs.core.trans.vo.TransPojo;
+import org.dromara.core.trans.vo.TransPojo;
 import lombok.Data;
 import org.apache.ibatis.type.JdbcType;
 
@@ -52,5 +52,15 @@ public abstract class BaseDO implements Serializable, TransPojo {
      */
     @TableLogic
     private Boolean deleted;
+
+    /**
+     * 把 creator、createTime、updateTime、updater 都清空，避免前端直接传递 creator 之类的字段，直接就被更新了
+     */
+    public void clean(){
+        this.creator = null;
+        this.createTime = null;
+        this.updater = null;
+        this.updateTime = null;
+    }
 
 }

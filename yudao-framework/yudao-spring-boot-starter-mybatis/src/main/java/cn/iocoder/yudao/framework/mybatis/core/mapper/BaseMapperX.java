@@ -42,6 +42,7 @@ public interface BaseMapperX<T> extends MPJBaseMapper<T> {
     default PageResult<T> selectPage(PageParam pageParam, Collection<SortingField> sortingFields, @Param("ew") Wrapper<T> queryWrapper) {
         // 特殊：不分页，直接查询全部
         if (PageParam.PAGE_SIZE_NONE.equals(pageParam.getPageSize())) {
+            MyBatisUtils.addOrder(queryWrapper, sortingFields);
             List<T> list = selectList(queryWrapper);
             return new PageResult<>(list, (long) list.size());
         }
@@ -62,6 +63,29 @@ public interface BaseMapperX<T> extends MPJBaseMapper<T> {
 
         // MyBatis Plus Join 查询
         IPage<D> mpPage = MyBatisUtils.buildPage(pageParam);
+        mpPage = selectJoinPage(mpPage, clazz, lambdaWrapper);
+        // 转换返回
+        return new PageResult<>(mpPage.getRecords(), mpPage.getTotal());
+    }
+
+    /**
+     * 执行分页查询并返回结果。
+     *
+     * @param pageParam 分页参数，包含页码、每页条数和排序字段信息。如果 pageSize 为 {@link PageParam#PAGE_SIZE_NONE}，则不分页，直接查询所有数据。
+     * @param clazz     结果集的类类型
+     * @param lambdaWrapper MyBatis Plus Join 查询条件包装器
+     * @param <D>       结果集的泛型类型
+     * @return 返回分页查询的结果，包括总记录数和当前页的数据列表
+     */
+    default <D> PageResult<D> selectJoinPage(SortablePageParam pageParam, Class<D> clazz, MPJLambdaWrapper<T> lambdaWrapper) {
+        // 特殊：不分页，直接查询全部
+        if (PageParam.PAGE_SIZE_NONE.equals(pageParam.getPageSize())) {
+            List<D> list = selectJoinList(clazz, lambdaWrapper);
+            return new PageResult<>(list, (long) list.size());
+        }
+
+        // MyBatis Plus Join 查询
+        IPage<D> mpPage = MyBatisUtils.buildPage(pageParam, pageParam.getSortingFields());
         mpPage = selectJoinPage(mpPage, clazz, lambdaWrapper);
         // 转换返回
         return new PageResult<>(mpPage.getRecords(), mpPage.getTotal());
@@ -92,8 +116,82 @@ public interface BaseMapperX<T> extends MPJBaseMapper<T> {
 
     default T selectOne(SFunction<T, ?> field1, Object value1, SFunction<T, ?> field2, Object value2,
                         SFunction<T, ?> field3, Object value3) {
-        return selectOne(new LambdaQueryWrapper<T>().eq(field1, value1).eq(field2, value2)
-                .eq(field3, value3));
+        return selectOne(new LambdaQueryWrapper<T>().eq(field1, value1).eq(field2, value2).eq(field3, value3));
+    }
+
+    /**
+     * 获得满足条件的一条记录，并使用 FOR UPDATE 锁定。
+     *
+     * 注意：需要在事务中调用，否则锁会立即释放。
+     *
+     * @param queryWrapper 查询条件
+     * @return 实体
+     */
+    default T selectOneForUpdate(LambdaQueryWrapper<T> queryWrapper) {
+        return selectOne(queryWrapper.last("FOR UPDATE"));
+    }
+
+    default T selectOneForUpdate(SFunction<T, ?> field, Object value) {
+        return selectOneForUpdate(new LambdaQueryWrapper<T>().eq(field, value));
+    }
+
+    default T selectOneForUpdate(SFunction<T, ?> field1, Object value1, SFunction<T, ?> field2, Object value2) {
+        return selectOneForUpdate(new LambdaQueryWrapper<T>().eq(field1, value1).eq(field2, value2));
+    }
+
+    default T selectOneForUpdate(SFunction<T, ?> field1, Object value1, SFunction<T, ?> field2, Object value2,
+                                 SFunction<T, ?> field3, Object value3) {
+        return selectOneForUpdate(new LambdaQueryWrapper<T>().eq(field1, value1).eq(field2, value2).eq(field3, value3));
+    }
+
+    /**
+     * 获得满足条件的第 1 条记录，并使用 FOR UPDATE 锁定。
+     *
+     * 注意：需要在事务中调用，否则锁会立即释放。
+     *
+     * @param queryWrapper 查询条件
+     * @return 实体
+     */
+    default T selectFirstOneForUpdate(LambdaQueryWrapper<T> queryWrapper) {
+        return selectOne(queryWrapper.last("LIMIT 1 FOR UPDATE"));
+    }
+
+    /**
+     * 获取满足条件的第 1 条记录
+     *
+     * 目的：解决并发场景下，插入多条记录后，使用 selectOne 会报错的问题
+     *
+     * @param field 字段名
+     * @param value 字段值
+     * @return 实体
+     */
+    default T selectFirstOne(SFunction<T, ?> field, Object value) {
+        // 如果明确使用 MySQL 等场景，可以考虑使用 LIMIT 1 进行优化
+        List<T> list = selectList(new LambdaQueryWrapper<T>().eq(field, value));
+        return CollUtil.getFirst(list);
+    }
+
+    default T selectFirstOne(SFunction<T, ?> field1, Object value1, SFunction<T, ?> field2, Object value2) {
+        List<T> list = selectList(new LambdaQueryWrapper<T>().eq(field1, value1).eq(field2, value2));
+        return CollUtil.getFirst(list);
+    }
+
+    default T selectFirstOne(SFunction<T,?> field1, Object value1, SFunction<T,?> field2, Object value2,
+                             SFunction<T,?> field3, Object value3) {
+        List<T> list = selectList(new LambdaQueryWrapper<T>().eq(field1, value1).eq(field2, value2).eq(field3, value3));
+        return CollUtil.getFirst(list);
+    }
+
+    /**
+     * 获取满足条件的最新一条记录
+     * <p>
+     * 目的：解决并发场景下，插入多条记录后，使用 selectOne 会报错的问题
+     *
+     * @param queryWrapper 查询条件
+     * @return 最新一条；不存在返回 null
+     */
+    default T selectLastOne(LambdaQueryWrapper<T> queryWrapper) {
+        return CollUtil.getLast(selectList(queryWrapper));
     }
 
     default Long selectCount() {
@@ -187,6 +285,13 @@ public interface BaseMapperX<T> extends MPJBaseMapper<T> {
 
     default int delete(SFunction<T, ?> field, Object value) {
         return delete(new LambdaQueryWrapper<T>().eq(field, value));
+    }
+
+    default int deleteBatch(SFunction<T, ?> field, Collection<?> values) {
+        if (CollUtil.isEmpty(values)) {
+            return 0;
+        }
+        return delete(new LambdaQueryWrapper<T>().in(field, values));
     }
 
 }

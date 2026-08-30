@@ -4,13 +4,16 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.util.ArrayUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import com.google.common.collect.ImmutableMap;
 
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.function.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static cn.hutool.core.convert.Convert.toCollection;
 import static java.util.Arrays.asList;
 
 /**
@@ -30,6 +33,34 @@ public class CollectionUtils {
 
     public static <T> boolean anyMatch(Collection<T> from, Predicate<T> predicate) {
         return from.stream().anyMatch(predicate);
+    }
+
+    public static <T> long sum(Collection<T> from, ToLongFunction<T> valueFunc) {
+        if (CollUtil.isEmpty(from)) {
+            return 0L;
+        }
+        return from.stream().mapToLong(valueFunc).sum();
+    }
+
+    public static <T> BigDecimal sumBigDecimal(Collection<T> from, Function<T, BigDecimal> valueFunc) {
+        if (CollUtil.isEmpty(from)) {
+            return BigDecimal.ZERO;
+        }
+        return from.stream().map(valueFunc).map(NumberUtils::zeroIfNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public static <T> long count(Collection<T> from, Predicate<T> predicate) {
+        if (CollUtil.isEmpty(from)) {
+            return 0L;
+        }
+        return from.stream().filter(predicate).count();
+    }
+
+    public static <T, R> long distinctCount(Collection<T> from, Function<T, R> keyMapper) {
+        if (CollUtil.isEmpty(from)) {
+            return 0L;
+        }
+        return from.stream().map(keyMapper).filter(Objects::nonNull).distinct().count();
     }
 
     public static <T> List<T> filterList(Collection<T> from, Predicate<T> predicate) {
@@ -121,6 +152,31 @@ public class CollectionUtils {
             return new HashSet<>();
         }
         return from.stream().filter(filter).map(func).filter(Objects::nonNull).collect(Collectors.toSet());
+    }
+
+    public static <T, U, S extends Set<U>> S convertSetBySupplier(
+            Collection<T> from, Function<T, U> func, Supplier<S> supplier) {
+        if (CollUtil.isEmpty(from)) {
+            return supplier.get();
+        }
+        return from.stream().map(func).filter(Objects::nonNull)
+                .collect(Collectors.toCollection(supplier));
+    }
+
+    public static <T, U> Set<U> convertLinkedSet(Collection<T> from, Function<T, U> func) {
+        if (CollUtil.isEmpty(from)) {
+            return new LinkedHashSet<>();
+        }
+        return from.stream().map(func).filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    public static <T, U> Set<U> convertLinkedSet(Collection<T> from, Function<T, U> func, Predicate<T> filter) {
+        if (CollUtil.isEmpty(from)) {
+            return new LinkedHashSet<>();
+        }
+        return from.stream().filter(filter).map(func).filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     public static <T, K> Map<K, T> convertMapByFilter(Collection<T> from, Predicate<T> filter, Function<T, K> keyFunc) {
@@ -333,6 +389,52 @@ public class CollectionUtils {
 
     public static <T> List<T> newArrayList(List<List<T>> list) {
         return list.stream().filter(Objects::nonNull).flatMap(Collection::stream).collect(Collectors.toList());
+    }
+
+    /**
+     * 转换为 LinkedHashSet
+     *
+     * @param <T>         元素类型
+     * @param elementType 集合中元素类型
+     * @param value       被转换的值
+     * @return {@link LinkedHashSet}
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> LinkedHashSet<T> toLinkedHashSet(Class<T> elementType, Object value) {
+        return (LinkedHashSet<T>) toCollection(LinkedHashSet.class, elementType, value);
+    }
+
+    public static boolean dfs(Long node, Map<Long, Set<Long>> graph) {
+        return dfs(node, graph, new HashSet<>(), new HashSet<>());
+    }
+
+    private static boolean dfs(Long node, Map<Long, Set<Long>> graph, Set<Long> visited, Set<Long> inStack) {
+        if (inStack.contains(node)) {
+            return true;
+        }
+        if (visited.contains(node)) {
+            return false;
+        }
+        visited.add(node);
+        inStack.add(node);
+        Set<Long> neighbors = graph.getOrDefault(node, Collections.emptySet());
+        for (Long neighbor : neighbors) {
+            if (dfs(neighbor, graph, visited, inStack)) {
+                return true;
+            }
+        }
+        inStack.remove(node);
+        return false;
+    }
+
+    /**
+     * 把单元素 head 与集合 tail 合并成新 List（head 在前，tail 顺序保留）
+     */
+    public static <T> List<T> of(T head, Collection<T> tail) {
+        List<T> list = new ArrayList<>();
+        list.add(head);
+        CollUtil.addAll(list, tail);
+        return list;
     }
 
 }

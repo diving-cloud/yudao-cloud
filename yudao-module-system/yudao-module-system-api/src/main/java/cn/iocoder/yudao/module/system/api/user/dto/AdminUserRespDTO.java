@@ -1,6 +1,6 @@
 package cn.iocoder.yudao.module.system.api.user.dto;
 
-import com.fhs.core.trans.vo.VO;
+import org.dromara.core.trans.vo.VO;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -27,6 +27,12 @@ public class AdminUserRespDTO implements VO {
 
     @Schema(description = "手机号码", requiredMode = Schema.RequiredMode.REQUIRED, example = "15601691300")
     private String mobile;
+
+    @Schema(description = "用户邮箱", example = "yuandao@example.com")
+    private String email;
+
+    @Schema(description = "用户性别", example = "1")
+    private Integer sex;
 
     @Schema(description = "用户头像", requiredMode = Schema.RequiredMode.REQUIRED, example = "https://www.iocoder.cn/1.png")
     private String avatar;

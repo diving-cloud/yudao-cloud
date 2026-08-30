@@ -3,8 +3,12 @@ package cn.iocoder.yudao.framework.tracer.config;
 import cn.iocoder.yudao.framework.common.enums.WebFilterOrderEnum;
 import cn.iocoder.yudao.framework.tracer.core.aop.BizTraceAspect;
 import cn.iocoder.yudao.framework.tracer.core.filter.TraceFilter;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.trace.Tracer;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -16,30 +20,28 @@ import org.springframework.context.annotation.Bean;
  * @author mashu
  */
 @AutoConfiguration
-@ConditionalOnClass({BizTraceAspect.class})
+@ConditionalOnClass(name = {
+        "io.opentelemetry.api.trace.Tracer", // 来自 opentelemetry-api.jar
+        "javax.servlet.Filter"
+})
 @EnableConfigurationProperties(TracerProperties.class)
 @ConditionalOnProperty(prefix = "yudao.tracer", value = "enable", matchIfMissing = true)
 public class YudaoTracerAutoConfiguration {
 
-    // TODO @芋艿：重要。目前 opentracing 版本存在冲突，要么保证 skywalking，要么保证阿里云短信 sdk
-//    @Bean
-//    public TracerProperties bizTracerProperties() {
-//        return new TracerProperties();
-//    }
-//
-//    @Bean
-//    public BizTraceAspect bizTracingAop() {
-//        return new BizTraceAspect(tracer());
-//    }
-//
-//    @Bean
-//    public Tracer tracer() {
-//        // 创建 SkywalkingTracer 对象
-//        SkywalkingTracer tracer = new SkywalkingTracer();
-//        // 设置为 GlobalTracer 的追踪器
-//        GlobalTracer.register(tracer);
-//        return tracer;
-//    }
+    @Value("${spring.application.name:application}")
+    private String applicationName;
+
+    @Bean
+    @ConditionalOnMissingBean
+    public Tracer tracer() {
+        return GlobalOpenTelemetry.getTracer(applicationName);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public BizTraceAspect bizTracingAop(Tracer tracer) {
+        return new BizTraceAspect(tracer);
+    }
 
     /**
      * 创建 TraceFilter 过滤器，响应 header 设置 traceId

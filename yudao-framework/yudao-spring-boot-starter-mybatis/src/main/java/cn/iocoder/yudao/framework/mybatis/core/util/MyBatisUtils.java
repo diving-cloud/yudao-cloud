@@ -1,11 +1,16 @@
 package cn.iocoder.yudao.framework.mybatis.core.util;
 
-import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.lang.func.Func1;
+import cn.hutool.core.lang.func.LambdaUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.SortingField;
 import cn.iocoder.yudao.framework.mybatis.core.enums.DbTypeEnum;
 import com.baomidou.mybatisplus.annotation.DbType;
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.core.toolkit.StringPool;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
@@ -18,7 +23,9 @@ import net.sf.jsqlparser.schema.Table;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * MyBatis 工具类
@@ -27,6 +34,12 @@ public class MyBatisUtils {
 
     private static final String MYSQL_ESCAPE_CHARACTER = "`";
 
+    private static final Pattern SAFE_COLUMN_NAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_]+(\\.[a-zA-Z0-9_]+)*$");
+
+    private static final String FIND_IN_SET_VALUE_PLACEHOLDER = "#{value}";
+
+    private static final String FIND_IN_SET_COLUMN_PLACEHOLDER = "#{column}";
+
     public static <T> Page<T> buildPage(PageParam pageParam) {
         return buildPage(pageParam, null);
     }
@@ -34,14 +47,72 @@ public class MyBatisUtils {
     public static <T> Page<T> buildPage(PageParam pageParam, Collection<SortingField> sortingFields) {
         // 页码 + 数量
         Page<T> page = new Page<>(pageParam.getPageNo(), pageParam.getPageSize());
+        page.setOptimizeJoinOfCountSql(false); // 关联 issue：https://gitee.com/zhijiantianya/yudao-cloud/issues/ID2QLL
         // 排序字段
-        if (!CollectionUtil.isEmpty(sortingFields)) {
-            page.addOrder(sortingFields.stream().map(sortingField -> SortingField.ORDER_ASC.equals(sortingField.getOrder())
-                            ? OrderItem.asc(StrUtil.toUnderlineCase(sortingField.getField()))
-                            : OrderItem.desc(StrUtil.toUnderlineCase(sortingField.getField())))
-                    .collect(Collectors.toList()));
+        if (CollUtil.isNotEmpty(sortingFields)) {
+            for (SortingField sortingField : sortingFields) {
+                String columnName = buildSafeOrderColumn(sortingField.getField());
+                if (columnName == null) {
+                    continue;
+                }
+                page.addOrder(new OrderItem().setAsc(isAscOrder(sortingField.getOrder())).setColumn(columnName));
+            }
         }
         return page;
+    }
+
+    @SuppressWarnings("PatternVariableCanBeUsed")
+    public static <T> void addOrder(Wrapper<T> wrapper, Collection<SortingField> sortingFields) {
+        if (CollUtil.isEmpty(sortingFields)) {
+            return;
+        }
+        if (wrapper instanceof QueryWrapper) {
+            QueryWrapper<T> query = (QueryWrapper<T>) wrapper;
+            for (SortingField sortingField : sortingFields) {
+                String columnName = buildSafeOrderColumn(sortingField.getField());
+                if (columnName == null) {
+                    continue;
+                }
+                query.orderBy(true, isAscOrder(sortingField.getOrder()), columnName);
+            }
+        } else if (wrapper instanceof LambdaQueryWrapper) {
+            // LambdaQueryWrapper 不直接支持字符串字段排序，使用 last 方法拼接 ORDER BY
+            LambdaQueryWrapper<T> lambdaQuery = (LambdaQueryWrapper<T>) wrapper;
+            StringBuilder orderBy = new StringBuilder();
+            for (SortingField sortingField : sortingFields) {
+                String columnName = buildSafeOrderColumn(sortingField.getField());
+                if (columnName == null) {
+                    continue;
+                }
+                if (StrUtil.isNotEmpty(orderBy)) {
+                    orderBy.append(", ");
+                }
+                orderBy.append(columnName).append(" ").append(getOrderDirection(sortingField.getOrder()));
+            }
+            if (StrUtil.isNotEmpty(orderBy)) {
+                lambdaQuery.last("ORDER BY " + orderBy);
+            }
+            // 另外个思路：https://blog.csdn.net/m0_59084856/article/details/138450913
+        } else {
+            throw new IllegalArgumentException("Unsupported wrapper type: " + wrapper.getClass().getName());
+        }
+
+    }
+
+    public static boolean isAscOrder(String order) {
+        return SortingField.ORDER_ASC.equals(order);
+    }
+
+    public static String getOrderDirection(String order) {
+        return isAscOrder(order) ? "ASC" : "DESC";
+    }
+
+    private static String buildSafeOrderColumn(String field) {
+        String columnName = StrUtil.toUnderlineCase(field);
+        if (StrUtil.isEmpty(columnName) || !SAFE_COLUMN_NAME_PATTERN.matcher(columnName).matches()) {
+            return null;
+        }
+        return columnName;
     }
 
     /**
@@ -92,15 +163,79 @@ public class MyBatisUtils {
     /**
      * 跨数据库的 find_in_set 实现
      *
-     * @param column 字段名称
-     * @param value  查询值(不带单引号)
+     * @param columnName 字段名称
      * @return sql
      */
-    public static String findInSet(String column, Object value) {
+    public static String findInSet(String columnName) {
+        return findInSet(columnName, 0);
+    }
+
+    /**
+     * 跨数据库的 find_in_set 实现，适用于同一个 apply 语句中有多个参数的场景
+     *
+     * @param columnName 字段名称
+     * @param paramIndex apply 参数序号
+     * @return sql
+     */
+    public static String findInSetWithParamIndex(String columnName, int paramIndex) {
+        return findInSet(columnName, paramIndex);
+    }
+
+    /**
+     * 跨数据库的 find_in_set 实现，适用于同一字段匹配多个参数的场景
+     *
+     * 每个参数生成一个 find_in_set 条件，并使用 OR 连接。
+     *
+     * @param columnName 字段名称
+     * @param values 参数集合
+     * @return sql
+     */
+    public static String findInSet(String columnName, Collection<?> values) {
+        return findInSet(JdbcUtils.getDbType(), columnName, values);
+    }
+
+    static String findInSet(DbType dbType, String columnName, Collection<?> values) {
+        if (CollUtil.isEmpty(values)) {
+            throw new IllegalArgumentException("Values cannot be empty");
+        }
+        return IntStream.range(0, values.size())
+                .mapToObj(index -> findInSet(dbType, columnName, index))
+                .collect(Collectors.joining(" OR "));
+    }
+
+    private static String findInSet(String columnName, int paramIndex) {
         DbType dbType = JdbcUtils.getDbType();
+        return findInSet(dbType, columnName, paramIndex);
+    }
+
+    static String findInSet(DbType dbType, String columnName, int paramIndex) {
+        if (!isSafeColumnName(columnName)) {
+            throw new IllegalArgumentException("Invalid column name: " + columnName);
+        }
+        if (paramIndex < 0) {
+            throw new IllegalArgumentException("Invalid param index: " + paramIndex);
+        }
         return DbTypeEnum.getFindInSetTemplate(dbType)
-                .replace("#{column}", column)
-                .replace("#{value}", StrUtil.toString(value));
+                .replace(FIND_IN_SET_COLUMN_PLACEHOLDER, columnName)
+                .replace(FIND_IN_SET_VALUE_PLACEHOLDER, "{" + paramIndex + "}");
+    }
+
+    private static boolean isSafeColumnName(String columnName) {
+        return StrUtil.isNotEmpty(columnName) && SAFE_COLUMN_NAME_PATTERN.matcher(columnName).matches();
+    }
+
+    /**
+     * 将驼峰命名转换为下划线命名
+     *
+     * 使用场景：
+     * 1. <a href="https://gitee.com/zhijiantianya/ruoyi-vue-pro/pulls/1357/files">fix:修复"商品统计聚合函数的别名与排序字段不符"导致的 SQL 异常</a>
+     *
+     * @param func 字段名函数(驼峰命名)
+     * @return 字段名(下划线命名)
+     */
+    public static <T> String toUnderlineCase(Func1<T, ?> func) {
+        String fieldName = LambdaUtil.getFieldName(func);
+        return StrUtil.toUnderlineCase(fieldName);
     }
 
 }

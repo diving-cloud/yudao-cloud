@@ -5,8 +5,8 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.enums.ApiConstants;
-import com.fhs.core.trans.anno.AutoTrans;
-import com.fhs.trans.service.AutoTransable;
+import org.dromara.core.trans.anno.AutoTrans;
+import org.dromara.trans.service.AutoTransable;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.Operation;
@@ -30,6 +30,10 @@ public interface AdminUserApi extends AutoTransable<AdminUserRespDTO> {
     @Parameter(name = "id", description = "用户编号", example = "1", required = true)
     CommonResult<AdminUserRespDTO> getUser(@RequestParam("id") Long id);
 
+    @GetMapping(PREFIX + "/get-by-mobile")
+    @Operation(summary = "通过手机号查询用户")
+    CommonResult<AdminUserRespDTO> getUserByMobile(@RequestParam("mobile") String mobile);
+
     @GetMapping(PREFIX + "/list-by-subordinate")
     @Operation(summary = "通过用户 ID 查询用户下属")
     @Parameter(name = "id", description = "用户编号", example = "1", required = true)
@@ -50,6 +54,11 @@ public interface AdminUserApi extends AutoTransable<AdminUserRespDTO> {
     @Parameter(name = "postIds", description = "岗位编号数组", example = "2,3", required = true)
     CommonResult<List<AdminUserRespDTO>> getUserListByPostIds(@RequestParam("postIds") Collection<Long> postIds);
 
+    @GetMapping(PREFIX + "/list-by-nickname")
+    @Operation(summary = "根据昵称模糊搜索用户")
+    @Parameter(name = "nickname", description = "昵称关键词", example = "芋道", required = true)
+    CommonResult<List<AdminUserRespDTO>> getUserListByNickname(@RequestParam("nickname") String nickname);
+
     /**
      * 获得用户 Map
      *
@@ -69,7 +78,7 @@ public interface AdminUserApi extends AutoTransable<AdminUserRespDTO> {
      * @param id 用户编号
      */
     default void validateUser(Long id) {
-        validateUserList(Collections.singleton(id));
+        validateUserList(Collections.singleton(id)).checkError();
     }
 
     @GetMapping(PREFIX + "/valid")

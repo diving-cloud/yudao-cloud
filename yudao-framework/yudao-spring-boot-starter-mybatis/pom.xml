@@ -24,8 +24,8 @@
         <!-- Web 相关 -->
         <dependency>
             <groupId>cn.iocoder.cloud</groupId>
-            <artifactId>yudao-spring-boot-starter-web</artifactId>
-            <scope>provided</scope> <!-- 设置为 provided，只有 OncePerRequestFilter 使用到 -->
+            <artifactId>yudao-spring-boot-starter-security</artifactId>
+            <scope>provided</scope> <!-- 设置为 provided，只有 DefaultDBFieldHandler 使用到 -->
         </dependency>
 
         <!-- DB 相关 -->
@@ -87,12 +87,19 @@
         </dependency>
 
         <dependency>
-            <groupId>com.fhs-opensource</groupId> <!-- VO 数据翻译 -->
+            <groupId>org.dromara</groupId> <!-- VO 数据翻译 -->
             <artifactId>easy-trans-spring-boot-starter</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.fhs-opensource</groupId>
+            <groupId>org.dromara</groupId>
             <artifactId>easy-trans-mybatis-plus-extend</artifactId>
+        </dependency>
+
+        <!-- Test 测试相关 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

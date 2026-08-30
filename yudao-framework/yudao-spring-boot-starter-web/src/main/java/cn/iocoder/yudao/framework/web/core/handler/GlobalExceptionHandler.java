@@ -1,10 +1,12 @@
 package cn.iocoder.yudao.framework.web.core.handler;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.exceptions.ExceptionUtil;
 import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.extra.servlet.JakartaServletUtil;
+import cn.iocoder.yudao.framework.common.biz.infra.logger.ApiErrorLogCommonApi;
+import cn.iocoder.yudao.framework.common.biz.infra.logger.dto.ApiErrorLogCreateReqDTO;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
@@ -13,22 +15,25 @@ import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.framework.common.util.monitor.TracerUtils;
 import cn.iocoder.yudao.framework.common.util.servlet.ServletUtils;
 import cn.iocoder.yudao.framework.web.core.util.WebFrameworkUtils;
-import cn.iocoder.yudao.module.infra.api.logger.ApiErrorLogApi;
-import cn.iocoder.yudao.module.infra.api.logger.dto.ApiErrorLogCreateReqDTO;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import com.google.common.util.concurrent.UncheckedExecutionException;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.util.Assert;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
+import org.springframework.validation.ObjectError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 
 import javax.servlet.http.HttpServletRequest;
@@ -36,15 +41,11 @@ import javax.validation.ConstraintViolation;
 import javax.validation.ConstraintViolationException;
 import javax.validation.ValidationException;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants.BAD_REQUEST;
-import static cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants.FORBIDDEN;
-import static cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR;
-import static cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants.METHOD_NOT_ALLOWED;
-import static cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants.NOT_FOUND;
-import static cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants.NOT_IMPLEMENTED;
+import static cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants.*;
 
 /**
  * 全局异常处理器，将 Exception 翻译成 CommonResult + 对应的异常编号
@@ -52,6 +53,7 @@ import static cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeC
  * @author 芋道源码
  */
 @RestControllerAdvice
+@Order(0) // 优先于三方库默认的全局异常处理器，例如 JimuReport
 @AllArgsConstructor
 @Slf4j
 public class GlobalExceptionHandler {
@@ -64,7 +66,7 @@ public class GlobalExceptionHandler {
     @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
     private final String applicationName;
 
-    private final ApiErrorLogApi apiErrorLogApi;
+    private final ApiErrorLogCommonApi apiErrorLogApi;
 
     /**
      * 处理所有异常，主要是提供给 Filter 使用
@@ -93,14 +95,17 @@ public class GlobalExceptionHandler {
         if (ex instanceof ValidationException) {
             return validationException((ValidationException) ex);
         }
+        if (ex instanceof MaxUploadSizeExceededException) {
+            return maxUploadSizeExceededExceptionHandler((MaxUploadSizeExceededException) ex);
+        }
         if (ex instanceof NoHandlerFoundException) {
             return noHandlerFoundExceptionHandler((NoHandlerFoundException) ex);
         }
-//        if (ex instanceof NoResourceFoundException) {
-//            return noResourceFoundExceptionHandler(request, (NoResourceFoundException) ex);
-//        }
         if (ex instanceof HttpRequestMethodNotSupportedException) {
             return httpRequestMethodNotSupportedExceptionHandler((HttpRequestMethodNotSupportedException) ex);
+        }
+        if (ex instanceof HttpMediaTypeNotSupportedException) {
+            return httpMediaTypeNotSupportedExceptionHandler((HttpMediaTypeNotSupportedException) ex);
         }
         if (ex instanceof ServiceException) {
             return serviceExceptionHandler((ServiceException) ex);
@@ -139,9 +144,23 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public CommonResult<?> methodArgumentNotValidExceptionExceptionHandler(MethodArgumentNotValidException ex) {
         log.warn("[methodArgumentNotValidExceptionExceptionHandler]", ex);
+        // 获取 errorMessage
+        String errorMessage = null;
         FieldError fieldError = ex.getBindingResult().getFieldError();
-        assert fieldError != null; // 断言，避免告警
-        return CommonResult.error(BAD_REQUEST.getCode(), String.format("请求参数不正确:%s", fieldError.getDefaultMessage()));
+        if (fieldError == null) {
+            // 组合校验，参考自 https://t.zsxq.com/3HVTx
+            List<ObjectError> allErrors = ex.getBindingResult().getAllErrors();
+            if (CollUtil.isNotEmpty(allErrors)) {
+                errorMessage = allErrors.get(0).getDefaultMessage();
+            }
+        } else {
+            errorMessage = fieldError.getDefaultMessage();
+        }
+        // 转换 CommonResult
+        if (StrUtil.isEmpty(errorMessage)) {
+            return CommonResult.error(BAD_REQUEST);
+        }
+        return CommonResult.error(BAD_REQUEST.getCode(), String.format("请求参数不正确:%s", errorMessage));
     }
 
     /**
@@ -158,17 +177,20 @@ public class GlobalExceptionHandler {
     /**
      * 处理 SpringMVC 请求参数类型错误
      *
-     * 例如说，接口上设置了 @RequestBody实体中 xx 属性类型为 Integer，结果传递 xx 参数类型为 String
+     * 例如说，接口上设置了 @RequestBody 实体中 xx 属性类型为 Integer，结果传递 xx 参数类型为 String
      */
     @ExceptionHandler(HttpMessageNotReadableException.class)
+    @SuppressWarnings("PatternVariableCanBeUsed")
     public CommonResult<?> methodArgumentTypeInvalidFormatExceptionHandler(HttpMessageNotReadableException ex) {
         log.warn("[methodArgumentTypeInvalidFormatExceptionHandler]", ex);
-        if(ex.getCause() instanceof InvalidFormatException) {
+        if (ex.getCause() instanceof InvalidFormatException) {
             InvalidFormatException invalidFormatException = (InvalidFormatException) ex.getCause();
             return CommonResult.error(BAD_REQUEST.getCode(), String.format("请求参数类型错误:%s", invalidFormatException.getValue()));
-        }else {
-            return defaultExceptionHandler(ServletUtils.getRequest(), ex);
         }
+        if (StrUtil.startWith(ex.getMessage(), "Required request body is missing")) {
+            return CommonResult.error(BAD_REQUEST.getCode(), "请求参数类型错误: request body 缺失");
+        }
+        return defaultExceptionHandler(ServletUtils.getRequest(), ex);
     }
 
     /**
@@ -192,6 +214,14 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 处理上传文件过大异常
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public CommonResult<?> maxUploadSizeExceededExceptionHandler(MaxUploadSizeExceededException ex) {
+        return CommonResult.error(BAD_REQUEST.getCode(), "上传文件过大，请调整后重试");
+    }
+
+    /**
      * 处理 SpringMVC 请求地址不存在
      *
      * 注意，它需要设置如下两个配置项：
@@ -203,15 +233,6 @@ public class GlobalExceptionHandler {
         log.warn("[noHandlerFoundExceptionHandler]", ex);
         return CommonResult.error(NOT_FOUND.getCode(), String.format("请求地址不存在:%s", ex.getRequestURL()));
     }
-
-//    /**
-//     * 处理 SpringMVC 请求地址不存在
-//     */
-//    @ExceptionHandler(NoResourceFoundException.class)
-//    private CommonResult<?> noResourceFoundExceptionHandler(HttpServletRequest req, NoResourceFoundException ex) {
-//        log.warn("[noResourceFoundExceptionHandler]", ex);
-//        return CommonResult.error(NOT_FOUND.getCode(), String.format("请求地址不存在:%s", ex.getResourcePath()));
-//    }
 
     /**
      * 处理 SpringMVC 请求方法不正确
@@ -225,6 +246,17 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 处理 SpringMVC 请求的 Content-Type 不正确
+     *
+     * 例如说，A 接口的 Content-Type 为 application/json，结果请求的 Content-Type 为 application/octet-stream，导致不匹配
+     */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public CommonResult<?> httpMediaTypeNotSupportedExceptionHandler(HttpMediaTypeNotSupportedException ex) {
+        log.warn("[httpMediaTypeNotSupportedExceptionHandler]", ex);
+        return CommonResult.error(BAD_REQUEST.getCode(), String.format("请求类型不正确:%s", ex.getMessage()));
+    }
+
+    /**
      * 处理 Spring Security 权限不足的异常
      *
      * 来源是，使用 @PreAuthorize 注解，AOP 进行权限拦截
@@ -234,6 +266,16 @@ public class GlobalExceptionHandler {
         log.warn("[accessDeniedExceptionHandler][userId({}) 无法访问 url({})]", WebFrameworkUtils.getLoginUserId(req),
                 req.getRequestURL(), ex);
         return CommonResult.error(FORBIDDEN);
+    }
+
+    /**
+     * 处理 Guava UncheckedExecutionException
+     *
+     * 例如说，缓存加载报错，可见 <a href="https://t.zsxq.com/UszdH">https://t.zsxq.com/UszdH</a>
+     */
+    @ExceptionHandler(value = UncheckedExecutionException.class)
+    public CommonResult<?> uncheckedExecutionExceptionHandler(HttpServletRequest req, UncheckedExecutionException ex) {
+        return allExceptionHandler(req, ex.getCause());
     }
 
     /**
@@ -258,6 +300,11 @@ public class GlobalExceptionHandler {
                 // 忽略日志，避免影响主流程
             }
         }
+        // ServiceException 的错误码可能为成功码，直接调用 CommonResult.error 会抛出异常，此处统一按系统异常处理。
+        // 详见 Issue #1196：https://github.com/YunaiV/ruoyi-vue-pro/issues/1196
+        if (CommonResult.isSuccess(ex.getCode())) {
+            return CommonResult.error(INTERNAL_SERVER_ERROR.getCode(), INTERNAL_SERVER_ERROR.getMsg());
+        }
         return CommonResult.error(ex.getCode(), ex.getMessage());
     }
 
@@ -266,6 +313,12 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(value = Exception.class)
     public CommonResult<?> defaultExceptionHandler(HttpServletRequest req, Throwable ex) {
+        // 特殊：如果是 ServiceException 的异常，则直接返回
+        // 例如说：https://gitee.com/zhijiantianya/yudao-cloud/issues/ICSSRM、https://gitee.com/zhijiantianya/yudao-cloud/issues/ICT6FM
+        if (ex.getCause() != null && ex.getCause() instanceof ServiceException) {
+            return serviceExceptionHandler((ServiceException) ex.getCause());
+        }
+
         // 情况一：处理表不存在的异常
         CommonResult<?> tableNotExistsResult = handleTableNotExists(ex);
         if (tableNotExistsResult != null) {
@@ -364,29 +417,47 @@ public class GlobalExceptionHandler {
             return CommonResult.error(NOT_IMPLEMENTED.getCode(),
                     "[ERP 系统 yudao-module-erp - 表结构未导入][参考 https://cloud.iocoder.cn/erp/build/ 开启]");
         }
-        // 6. CRM 系统
+        // 6. WMS 仓库管理系统
+        if (message.contains("wms_")) {
+            log.error("[WMS 仓库管理系统 yudao-module-wms - 表结构未导入][参考 https://cloud.iocoder.cn/wms/build/ 开启]");
+            return CommonResult.error(NOT_IMPLEMENTED.getCode(),
+                    "[WMS 仓库管理系统 yudao-module-wms - 表结构未导入][参考 https://cloud.iocoder.cn/wms/build/ 开启]");
+        }
+        // 7. CRM 系统
         if (message.contains("crm_")) {
             log.error("[CRM 系统 yudao-module-crm - 表结构未导入][参考 https://cloud.iocoder.cn/crm/build/ 开启]");
             return CommonResult.error(NOT_IMPLEMENTED.getCode(),
                     "[CRM 系统 yudao-module-crm - 表结构未导入][参考 https://cloud.iocoder.cn/crm/build/ 开启]");
         }
-        // 7. 支付平台
+        // 8. MES 系统
+        if (message.contains("mes_")) {
+            log.error("[MES 系统 yudao-module-mes - 表结构未导入][参考 https://cloud.iocoder.cn/mes/build/ 开启]");
+            return CommonResult.error(NOT_IMPLEMENTED.getCode(),
+                    "[MES 系统 yudao-module-mes - 表结构未导入][参考 https://cloud.iocoder.cn/mes/build/ 开启]");
+        }
+        // 9. IM 即时通讯
+        if (message.contains("im_")) {
+            log.error("[IM 即时通讯 yudao-module-im - 表结构未导入][参考 https://cloud.iocoder.cn/im/build/ 开启]");
+            return CommonResult.error(NOT_IMPLEMENTED.getCode(),
+                    "[IM 即时通讯 yudao-module-im - 表结构未导入][参考 https://cloud.iocoder.cn/im/build/ 开启]");
+        }
+        // 10. 支付平台
         if (message.contains("pay_")) {
             log.error("[支付模块 yudao-module-pay - 表结构未导入][参考 https://cloud.iocoder.cn/pay/build/ 开启]");
             return CommonResult.error(NOT_IMPLEMENTED.getCode(),
                     "[支付模块 yudao-module-pay - 表结构未导入][参考 https://cloud.iocoder.cn/pay/build/ 开启]");
         }
-        // 8. AI 大模型
+        // 11. AI 大模型
         if (message.contains("ai_")) {
             log.error("[AI 大模型 yudao-module-ai - 表结构未导入][参考 https://cloud.iocoder.cn/ai/build/ 开启]");
             return CommonResult.error(NOT_IMPLEMENTED.getCode(),
                     "[AI 大模型 yudao-module-ai - 表结构未导入][参考 https://cloud.iocoder.cn/ai/build/ 开启]");
         }
-        // 9. IOT 物联网
+        // 12. IoT 物联网
         if (message.contains("iot_")) {
-            log.error("[IOT 物联网 yudao-module-iot - 表结构未导入][参考 https://doc.iocoder.cn/iot/build/ 开启]");
+            log.error("[IoT 物联网 yudao-module-iot - 表结构未导入][参考 https://doc.iocoder.cn/iot/build/ 开启]");
             return CommonResult.error(NOT_IMPLEMENTED.getCode(),
-                    "[IOT 物联网 yudao-module-iot - 表结构未导入][参考 https://doc.iocoder.cn/iot/build/ 开启]");
+                    "[IoT 物联网 yudao-module-iot - 表结构未导入][参考 https://doc.iocoder.cn/iot/build/ 开启]");
         }
         return null;
     }
